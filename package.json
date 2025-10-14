@@ -1,0 +1,34 @@
+{
+  "name": "dido",
+  "version": "0.1.0",
+  "description": "AI-powered git commit assistant that gets smarter over time",
+  "main": "dist/index.js",
+  "bin": {
+    "dido": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["git", "commit", "ai", "cli", "automation"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.0",
+    "better-sqlite3": "^11.0.0",
+    "commander": "^12.0.0",
+    "inquirer": "^9.2.0",
+    "simple-git": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/inquirer": "^9.0.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
