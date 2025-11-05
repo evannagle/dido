@@ -77,7 +77,7 @@ export class ContextManager {
   getConfig(): Config {
     const defaultConfig: Config = {
       autoPush: false,
-      model: 'claude-3-5-sonnet-20241022'
+      model: 'claude-haiku-4-5'
     };
 
     if (!fs.existsSync(this.configPath)) {

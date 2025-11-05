@@ -1,6 +1,6 @@
 {
   "name": "dido",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI-powered git commit assistant that gets smarter over time",
   "main": "dist/index.js",
   "bin": {

@@ -228,14 +228,17 @@ JSON file storing:
 
 Dido supports all Claude models via Anthropic API:
 
-- `claude-3-5-sonnet-20241022` (default, recommended)
-- `claude-3-opus-20240229`
-- `claude-3-sonnet-20240229`
-- `claude-3-haiku-20240307`
+- `claude-haiku-4-5` (default, fast and cost-effective)
+- `claude-sonnet-4-5` (better quality, slower, more expensive)
+- Specific versions: `claude-3-5-haiku-20241022`, `claude-3-5-sonnet-20241022`, etc.
 
 **Changing model:**
 ```bash
-dido config --model claude-3-opus-20240229
+# Use Sonnet for better quality
+dido config --model claude-sonnet-4-5
+
+# Use specific version
+dido config --model claude-3-5-sonnet-20241022
 ```
 
 ---

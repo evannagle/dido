@@ -21,7 +21,7 @@ export class DidoCLI {
     this.program
       .name('dido')
       .description('AI-powered git commit assistant')
-      .version('0.1.0');
+      .version('0.1.1');
 
     this.program
       .command('commit', { isDefault: true })

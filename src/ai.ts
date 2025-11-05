@@ -5,7 +5,7 @@ export class AICommitGenerator {
   private client: Anthropic;
   private model: string;
 
-  constructor(apiKey: string, model: string = 'claude-3-5-sonnet-20241022') {
+  constructor(apiKey: string, model: string = 'claude-haiku-4-5') {
     this.client = new Anthropic({ apiKey });
     this.model = model;
   }
@@ -47,19 +47,16 @@ export class AICommitGenerator {
     readmeContent: string | null,
     recentCommits: string[]
   ): string {
-    let prompt = `You are an expert at writing clear, concise git commit messages.
-
-Your task is to analyze git diffs and generate a single-line commit message that:
-- Is concise (50-72 characters ideal)
-- Uses imperative mood (e.g., "Add feature" not "Added feature")
-- Focuses on the "what" and "why", not the "how"
-- Follows conventional commit patterns when appropriate (feat:, fix:, chore:, docs:, etc.)
+    let prompt = `Generate a concise git commit message (50-72 chars) that:
+- Uses imperative mood ("Add" not "Added")
+- Focuses on what changed and why
+- Follows conventional commits when appropriate (feat:, fix:, chore:, docs:)
 
 `;
 
     if (recentCommits.length > 0) {
-      prompt += `\nRecent commit messages from this repository for style reference:\n`;
-      recentCommits.slice(0, 5).forEach(commit => {
+      prompt += `\nRecent commit messages for style reference:\n`;
+      recentCommits.slice(0, 3).forEach(commit => {
         prompt += `- ${commit}\n`;
       });
     }
@@ -73,17 +70,17 @@ Your task is to analyze git diffs and generate a single-line commit message that
     }
 
     if (readmeContent) {
-      const truncatedReadme = readmeContent.slice(0, 1000);
-      prompt += `\nProject description (from README):\n${truncatedReadme}\n`;
+      const truncatedReadme = readmeContent.slice(0, 500);
+      prompt += `\nProject description:\n${truncatedReadme}\n`;
     }
 
-    prompt += `\nRespond with ONLY the commit message (one line). Do not include quotes, explanations, or additional text.`;
+    prompt += `\nRespond with ONLY the commit message. No quotes or explanations.`;
 
     return prompt;
   }
 
   private buildUserPrompt(diff: string): string {
-    const maxDiffLength = 6000;
+    const maxDiffLength = 4000;
     let truncatedDiff = diff;
 
     if (diff.length > maxDiffLength) {

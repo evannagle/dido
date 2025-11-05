@@ -85,8 +85,9 @@ dido config --api-key YOUR_KEY
 # Enable auto-push (always push after committing)
 dido config --auto-push true
 
-# Change Claude model
-dido config --model claude-3-5-sonnet-20241022
+# Change Claude model (default is Haiku for speed/cost)
+dido config --model claude-haiku-4-5
+dido config --model claude-sonnet-4-5  # For better quality
 
 # View current config
 dido config
