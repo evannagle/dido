@@ -59,7 +59,16 @@ export class DidoCLI {
       }
 
       // Check for changes
-      if (!(await this.git.hasChanges())) {
+      const hasChanges = await this.git.hasChanges();
+
+      if (!hasChanges) {
+        // If --push flag is set and no changes, just push
+        if (options.push) {
+          console.log('No changes to commit, pushing...');
+          await this.git.push();
+          console.log('Pushed successfully!');
+          return;
+        }
         console.log('No changes to commit');
         return;
       }
