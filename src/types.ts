@@ -20,3 +20,25 @@ export interface Config {
   autoPush: boolean;
   model: string;
 }
+
+export interface RepoScanResult {
+  path: string;
+  name: string;
+  hasChanges: boolean;
+  fileCount: number;
+  error?: string;
+}
+
+export interface RecursiveCommitSummary {
+  total: number;
+  committed: number;
+  skipped: number;
+  failed: number;
+  pushed: number;
+}
+
+export interface SingleCommitResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+}

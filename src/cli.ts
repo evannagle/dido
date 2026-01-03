@@ -1,9 +1,16 @@
 import { Command } from 'commander';
 import inquirer from 'inquirer';
+import * as path from 'path';
 import { GitOperations } from './git';
 import { AICommitGenerator } from './ai';
 import { ContextManager } from './context';
-import { ProjectContext } from './types';
+import { RepoDiscovery } from './discovery';
+import {
+  ProjectContext,
+  RepoScanResult,
+  RecursiveCommitSummary,
+  SingleCommitResult,
+} from './types';
 
 export class DidoCLI {
   private program: Command;
@@ -28,8 +35,14 @@ export class DidoCLI {
       .description('Stage all changes and create an AI-generated commit')
       .option('-p, --push', 'Push after committing')
       .option('-m, --message <message>', 'Use a custom message instead of AI generation')
+      .option('-r, --recursive', 'Traverse child directories for git repos')
+      .option('-d, --depth <number>', 'Max recursion depth (default: unlimited)', parseInt)
       .action(async (options) => {
-        await this.handleCommit(options);
+        if (options.recursive) {
+          await this.handleRecursiveCommit(options);
+        } else {
+          await this.handleCommit(options);
+        }
       });
 
     this.program
@@ -272,6 +285,236 @@ export class DidoCLI {
     } catch (error: any) {
       console.error(`Error: ${error.message}`);
       process.exit(1);
+    }
+  }
+
+  private async handleRecursiveCommit(options: {
+    push?: boolean;
+    message?: string;
+    depth?: number;
+  }): Promise<void> {
+    const discovery = new RepoDiscovery();
+    const basePath = process.cwd();
+    const maxDepth = options.depth ?? -1;
+
+    console.log('Scanning for git repositories...');
+    const repoPaths = discovery.findRepositories(basePath, maxDepth);
+
+    if (repoPaths.length === 0) {
+      console.log('No git repositories found.');
+      return;
+    }
+
+    // Scan each repo for changes
+    const scanResults: RepoScanResult[] = [];
+    for (const repoPath of repoPaths) {
+      const git = new GitOperations(repoPath);
+      const relativePath = './' + path.relative(basePath, repoPath);
+      const name = path.basename(repoPath);
+
+      try {
+        const hasChanges = await git.hasChanges();
+        let fileCount = 0;
+        if (hasChanges) {
+          const status = await git.getStatus();
+          fileCount = status.files.length;
+        }
+        scanResults.push({ path: repoPath, name, hasChanges, fileCount });
+      } catch (error: any) {
+        scanResults.push({
+          path: repoPath,
+          name,
+          hasChanges: false,
+          fileCount: 0,
+          error: error.message,
+        });
+      }
+    }
+
+    // Display summary table
+    console.log(`\nFound ${scanResults.length} repositories:\n`);
+    console.log('  Repository                      Changed      Status');
+    console.log('  ' + '-'.repeat(60));
+
+    for (const result of scanResults) {
+      const relativePath = './' + path.relative(basePath, result.path);
+      const displayPath = relativePath.length > 30
+        ? '...' + relativePath.slice(-27)
+        : relativePath.padEnd(30);
+
+      if (result.error) {
+        console.log(`  ${displayPath}  ${'error'.padEnd(10)}   ${result.error}`);
+      } else if (result.hasChanges) {
+        const fileText = result.fileCount === 1 ? '1 file' : `${result.fileCount} files`;
+        console.log(`  ${displayPath}  ${fileText.padEnd(10)}   ready`);
+      } else {
+        console.log(`  ${displayPath}  ${'0 files'.padEnd(10)}   no changes`);
+      }
+    }
+
+    // Filter to repos with changes
+    const reposWithChanges = scanResults.filter((r) => r.hasChanges && !r.error);
+
+    if (reposWithChanges.length === 0) {
+      console.log('\nNo repositories have changes to commit.');
+      return;
+    }
+
+    console.log(`\nProcessing ${reposWithChanges.length} repositories with changes...\n`);
+
+    // Process each repo
+    const summary: RecursiveCommitSummary = {
+      total: scanResults.length,
+      committed: 0,
+      skipped: scanResults.length - reposWithChanges.length,
+      failed: 0,
+      pushed: 0,
+    };
+
+    const committedRepos: string[] = [];
+
+    for (let i = 0; i < reposWithChanges.length; i++) {
+      const result = reposWithChanges[i];
+      const relativePath = './' + path.relative(basePath, result.path);
+      console.log(`[${i + 1}/${reposWithChanges.length}] ${relativePath}`);
+
+      const commitResult = await this.performSingleCommit(result.path, {
+        message: options.message,
+        skipPush: true, // We'll batch pushes at the end
+      });
+
+      if (commitResult.success) {
+        summary.committed++;
+        committedRepos.push(result.path);
+        console.log('  Committed!\n');
+      } else if (commitResult.error === 'cancelled') {
+        console.log('  Skipped.\n');
+      } else {
+        summary.failed++;
+        console.log(`  Failed: ${commitResult.error}\n`);
+      }
+    }
+
+    // Handle push if requested
+    if (options.push && committedRepos.length > 0) {
+      const { confirmPush } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'confirmPush',
+          message: `Push ${committedRepos.length} repositories to remote?`,
+          default: true,
+        },
+      ]);
+
+      if (confirmPush) {
+        console.log('\nPushing...');
+        for (const repoPath of committedRepos) {
+          const relativePath = './' + path.relative(basePath, repoPath);
+          try {
+            const git = new GitOperations(repoPath);
+            await git.push();
+            summary.pushed++;
+            console.log(`  ${relativePath} - pushed`);
+          } catch (error: any) {
+            console.log(`  ${relativePath} - failed: ${error.message}`);
+          }
+        }
+      }
+    }
+
+    // Final summary
+    console.log('\nSummary:');
+    console.log(`  Total repositories:  ${summary.total}`);
+    console.log(`  Committed:           ${summary.committed}`);
+    console.log(`  Skipped:             ${summary.skipped}`);
+    console.log(`  Failed:              ${summary.failed}`);
+    if (options.push) {
+      console.log(`  Pushed:              ${summary.pushed}`);
+    }
+  }
+
+  private async performSingleCommit(
+    repoPath: string,
+    options: { message?: string; skipPush?: boolean }
+  ): Promise<SingleCommitResult> {
+    const git = new GitOperations(repoPath);
+
+    try {
+      // Stage all changes
+      console.log('  Staging changes...');
+      await git.stageAll();
+
+      // Get config
+      const config = this.contextManager.getConfig();
+      const apiKey = config.apiKey || process.env.ANTHROPIC_API_KEY;
+
+      let commitMessage: string;
+
+      if (options.message) {
+        commitMessage = options.message;
+      } else {
+        if (!apiKey) {
+          return { success: false, error: 'API key not configured' };
+        }
+
+        console.log('  Analyzing changes...');
+
+        const diff = await git.getDiff(true);
+        const recentCommits = await git.getRecentCommits(10);
+
+        // Get or create project context
+        let projectContext = this.contextManager.getProjectContext(repoPath);
+        const readmeContent = await git.readFile('README.md');
+
+        const ai = new AICommitGenerator(apiKey, config.model);
+
+        if (!projectContext && readmeContent) {
+          const status = await git.getStatus();
+          const fileList = status.files.map((f) => f.path);
+          const projectType = await ai.analyzeProjectType(readmeContent, fileList);
+
+          projectContext = {
+            projectPath: repoPath,
+            projectType,
+            lastAnalyzed: new Date().toISOString(),
+            readmeContent: readmeContent.slice(0, 2000),
+          };
+
+          this.contextManager.saveProjectContext(projectContext);
+        }
+
+        const analysis = await ai.generateCommitMessage(
+          diff,
+          recentCommits,
+          projectContext,
+          readmeContent
+        );
+
+        commitMessage = analysis.message;
+
+        console.log(`  Generated: "${commitMessage}"`);
+
+        // Confirm
+        const { confirm } = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'confirm',
+            message: '  Proceed?',
+            default: true,
+          },
+        ]);
+
+        if (!confirm) {
+          return { success: false, error: 'cancelled' };
+        }
+      }
+
+      // Commit
+      await git.commit(commitMessage);
+
+      return { success: true, message: commitMessage };
+    } catch (error: any) {
+      return { success: false, error: error.message };
     }
   }
 
